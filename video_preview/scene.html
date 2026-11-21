@@ -227,6 +227,27 @@ const matNormal = makeDisplacedChannelMat(nrmDispTex, true);
 const matRough = makeDisplacedChannelMat(rghDispTex, true);
 const matOpacity = makeDisplacedChannelMat(opDispTex || rghDispTex, false);
 
+// Mesh selector: auto = current studio layout; otherwise a single hero shape for every shot
+const MESH_MODES = new Set(["auto", "sphere", "cube", "cylinder", "plane"]);
+const requestedMesh = (params.get("mesh") || "auto").toLowerCase();
+const meshMode = MESH_MODES.has(requestedMesh) ? requestedMesh : "auto";
+const useExplicitMesh = meshMode !== "auto";
+
+if (meshMode === "plane") {
+  pbrMat.side = THREE.DoubleSide;
+  depthMat.side = THREE.DoubleSide;
+  for (const m of [matAlbedo, matNormal, matRough, matOpacity]) {
+    m.side = THREE.DoubleSide;
+  }
+  // Slightly wider / longer shadow frustum so a grazing light still covers the plane
+  keyLight.shadow.camera.left = -3.6;
+  keyLight.shadow.camera.right = 3.6;
+  keyLight.shadow.camera.top = 3.6;
+  keyLight.shadow.camera.bottom = -3.6;
+  keyLight.shadow.camera.far = 18.0;
+  hemi.intensity = 0.48;
+}
+
 // Build studio floor & backdrop wall
 const floorGeo = new THREE.PlaneGeometry(18, 18);
 const floorMat = new THREE.MeshStandardMaterial({
@@ -251,8 +272,19 @@ let tilingPlane = null;
 let wallMesh = null;
 const displacedMeshes = [];
 
+function addDisplaced(geo, parent = heroGroup) {
+  geo.setAttribute("uv2", geo.attributes.uv);
+  const mesh = new THREE.Mesh(geo, pbrMat);
+  mesh.customDepthMaterial = depthMat;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  parent.add(mesh);
+  displacedMeshes.push(mesh);
+  return mesh;
+}
+
 if (hasCutout) {
-  // Warm sunlit architectural wall behind the chain-link fence so transparency + cast diamond shadows read clearly
+  // Warm sunlit architectural wall so cutout holes + diamond shadows read clearly
   scene.background = new THREE.Color(0x232832);
   const wallGeo = new THREE.PlaneGeometry(12, 7);
   const wallMat = new THREE.MeshStandardMaterial({
@@ -261,22 +293,32 @@ if (hasCutout) {
     metalness: 0.0,
   });
   wallMesh = new THREE.Mesh(wallGeo, wallMat);
-  wallMesh.position.set(0, 1.0, -1.25);
+  wallMesh.position.set(0, 1.0, meshMode === "plane" ? -1.55 : -1.25);
   wallMesh.receiveShadow = true;
   scene.add(wallMesh);
+}
 
-  // Fence mesh panel inside a dark steel frame
+if (meshMode === "plane") {
+  // Flat, finely subdivided displaced plane, tilted ~40° from horizontal and viewed at 35-45°
+  const mesh = addDisplaced(new THREE.PlaneGeometry(2.55, 2.55, 256, 256));
+  mesh.rotation.x = -Math.PI / 2 + (40 * Math.PI / 180);
+  mesh.position.set(0, 0.02, 0);
+} else if (meshMode === "sphere") {
+  const mesh = addDisplaced(new THREE.SphereGeometry(0.82, 192, 192));
+  mesh.position.set(0, -0.08, 0);
+} else if (meshMode === "cube") {
+  const mesh = addDisplaced(new THREE.BoxGeometry(1.28, 1.28, 1.28, 96, 96, 96));
+  mesh.position.set(0, -0.08, 0);
+  mesh.rotation.set(0.12, 0.35, 0);
+} else if (meshMode === "cylinder") {
+  const mesh = addDisplaced(new THREE.CylinderGeometry(0.62, 0.62, 1.45, 128, 96, false));
+  mesh.position.set(0, -0.08, 0);
+} else if (hasCutout) {
+  // auto + cutout: framed fence panel (original studio layout)
   const panelGeo = new THREE.PlaneGeometry(2.25, 1.70, 192, 144);
-  panelGeo.setAttribute("uv2", panelGeo.attributes.uv);
-  fencePanel = new THREE.Mesh(panelGeo, pbrMat);
-  fencePanel.customDepthMaterial = depthMat;
-  fencePanel.castShadow = true;
-  fencePanel.receiveShadow = true;
+  fencePanel = addDisplaced(panelGeo);
   fencePanel.position.set(0, 0.05, 0.0);
-  heroGroup.add(fencePanel);
-  displacedMeshes.push(fencePanel);
 
-  // Sleek dark galvanized top/bottom/side frame rails around the panel
   const railMat = new THREE.MeshStandardMaterial({ color: 0x383e46, metalness: 0.85, roughness: 0.35 });
   const topRail = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 2.34, 24), railMat);
   topRail.rotation.z = Math.PI / 2;
@@ -291,29 +333,15 @@ if (hasCutout) {
   rightPost.position.set(1.14, -0.02, 0);
   heroGroup.add(topRail, botRail, leftPost, rightPost);
 
-  // Dedicated wide panel for tiling_zoom
   const tileGeo = new THREE.PlaneGeometry(3.4, 2.5, 192, 144);
-  tileGeo.setAttribute("uv2", tileGeo.attributes.uv);
-  tilingPlane = new THREE.Mesh(tileGeo, pbrMat);
-  tilingPlane.customDepthMaterial = depthMat;
-  tilingPlane.castShadow = true;
-  tilingPlane.receiveShadow = true;
+  tilingPlane = addDisplaced(tileGeo, scene);
   tilingPlane.visible = false;
-  scene.add(tilingPlane);
-  displacedMeshes.push(tilingPlane);
 } else {
-  // Dual-geometry hero setup: Displaced Sphere + Displaced Rounded Slab
+  // auto + opaque: displaced sphere + rounded swatch (original studio layout)
   const sphereGeo = new THREE.SphereGeometry(0.76, 192, 192);
-  sphereGeo.setAttribute("uv2", sphereGeo.attributes.uv);
-  heroSphere = new THREE.Mesh(sphereGeo, pbrMat);
-  heroSphere.customDepthMaterial = depthMat;
-  heroSphere.castShadow = true;
-  heroSphere.receiveShadow = true;
+  heroSphere = addDisplaced(sphereGeo);
   heroSphere.position.set(-0.82, -0.10, 0.0);
-  heroGroup.add(heroSphere);
-  displacedMeshes.push(heroSphere);
 
-  // Cleanly UV-mapped displaced swatch tile inside a sleek dark anodized backing tray
   const swatchGroup = new THREE.Group();
   swatchGroup.position.set(0.84, -0.10, 0.0);
   swatchGroup.rotation.set(-0.16, -0.22, 0.0);
@@ -326,27 +354,14 @@ if (hasCutout) {
   swatchGroup.add(backingMesh);
 
   const tileFaceGeo = new THREE.PlaneGeometry(1.22, 1.22, 192, 192);
-  tileFaceGeo.setAttribute("uv2", tileFaceGeo.attributes.uv);
-  heroBlock = new THREE.Mesh(tileFaceGeo, pbrMat);
-  heroBlock.customDepthMaterial = depthMat;
-  heroBlock.castShadow = true;
-  heroBlock.receiveShadow = true;
+  heroBlock = addDisplaced(tileFaceGeo, swatchGroup);
   heroBlock.position.z = 0.004;
-  swatchGroup.add(heroBlock);
   heroGroup.add(swatchGroup);
-  displacedMeshes.push(heroBlock);
 
-  // Dedicated displaced square tile for tiling_zoom shot
   const tileGeo = new THREE.PlaneGeometry(3.2, 3.2, 224, 224);
-  tileGeo.setAttribute("uv2", tileGeo.attributes.uv);
-  tilingPlane = new THREE.Mesh(tileGeo, pbrMat);
-  tilingPlane.customDepthMaterial = depthMat;
-  tilingPlane.castShadow = true;
-  tilingPlane.receiveShadow = true;
+  tilingPlane = addDisplaced(tileGeo, scene);
   tilingPlane.rotation.x = -0.35;
   tilingPlane.visible = false;
-  scene.add(tilingPlane);
-  displacedMeshes.push(tilingPlane);
 }
 
 function setRepeat(rx, ry) {
@@ -363,6 +378,166 @@ function setDispScale(sc) {
   for (const m of [pbrMat, depthMat, matAlbedo, matNormal, matRough, matOpacity]) {
     m.displacementScale = sc;
     m.displacementBias = -sc * 0.5;
+  }
+}
+
+function placeGrazingLight(azimuth, elevationDeg = 20, radius = 4.2, yBoost = 0.35) {
+  const el = elevationDeg * Math.PI / 180;
+  keyLight.position.set(
+    Math.sin(azimuth) * radius * Math.cos(el),
+    Math.sin(el) * radius + yBoost,
+    Math.cos(azimuth) * radius * Math.cos(el),
+  );
+}
+
+function placeOrbitCamera(azimuth, elevationDeg, distance, targetY = 0.02) {
+  const el = elevationDeg * Math.PI / 180;
+  camera.position.set(
+    Math.sin(azimuth) * distance * Math.cos(el),
+    Math.sin(el) * distance,
+    Math.cos(azimuth) * distance * Math.cos(el),
+  );
+  camera.lookAt(0, targetY, 0);
+}
+
+function applyExplicitMeshCamera(shotType, u) {
+  const tilingT = 0.5 - 0.5 * Math.cos(u * Math.PI);
+  if (shotType === "tiling_zoom") {
+    const rep = 1.5 + 3.0 * tilingT;
+    setRepeat(rep, hasCutout ? rep * 0.75 : rep);
+  } else {
+    setRepeat(hasCutout ? 1.5 : 2.0, hasCutout ? 1.15 : 2.0);
+  }
+  if (shotType === "closeup_displacement") {
+    setDispScale(hasCutout ? 0.034 : 0.070);
+  }
+  heroGroup.rotation.set(0, 0, 0);
+
+  if (meshMode === "plane") {
+    // View the displaced plane at ~35-45° with a grazing light so relief reads
+    let az = 0.18;
+    let dist = 3.15;
+    let elev = 38;
+    if (shotType === "turntable") {
+      az = 0.18 + Math.sin(u * Math.PI * 2.0) * 0.55;
+      dist = 3.15 + 0.08 * Math.cos(u * Math.PI * 2.0);
+    } else if (shotType === "closeup_displacement") {
+      const t = 0.5 - 0.5 * Math.cos(u * Math.PI);
+      az = -0.35 + 0.70 * t;
+      dist = 2.15 - 0.55 * t;
+      elev = 28;
+    } else if (shotType === "tiling_zoom") {
+      dist = 2.6 + 1.2 * tilingT;
+    } else if (shotType === "channel_split") {
+      heroGroup.rotation.set(0, Math.sin(u * Math.PI) * 0.12, 0);
+    }
+    placeOrbitCamera(az, elev, dist, 0.02);
+    if (shotType === "lightorbit") {
+      placeGrazingLight(-0.95 + u * 1.90, 18, 4.2, 0.35);
+    } else {
+      placeGrazingLight(0.55 + (shotType === "turntable" ? u * 0.35 : 0), 22, 4.0, 0.4);
+    }
+    return;
+  }
+
+  // sphere / cube / cylinder — orbit around a centered hero
+  if (shotType === "turntable") {
+    const az = u * Math.PI * 2.0 + 0.35;
+    const rad = 3.55;
+    const el = 0.55 + 0.22 * Math.sin(u * Math.PI * 2.0);
+    camera.position.set(Math.sin(az) * rad, el, Math.cos(az) * rad);
+    camera.lookAt(0, -0.05, 0);
+    keyLight.position.set(2.8, 3.2, 3.0);
+  } else if (shotType === "lightorbit") {
+    camera.position.set(0.15, 0.62, 3.35);
+    camera.lookAt(0, -0.08, 0);
+    const az = u * Math.PI * 2.0 + 0.4;
+    keyLight.position.set(Math.sin(az) * 4.0, 2.2 + 0.8 * Math.cos(u * Math.PI * 2.0), Math.cos(az) * 4.0);
+  } else if (shotType === "closeup_displacement") {
+    const t = 0.5 - 0.5 * Math.cos(u * Math.PI);
+    camera.position.set(-1.15 + 2.2 * t, 0.55 - 0.22 * t, 2.05 - 0.45 * t);
+    camera.lookAt(0, -0.05, 0);
+    keyLight.position.set(2.4, 2.4, 2.2);
+  } else if (shotType === "tiling_zoom") {
+    camera.position.set(0.0, 0.45 + 0.35 * tilingT, 2.55 + 1.2 * tilingT);
+    camera.lookAt(0, -0.05, 0);
+    keyLight.position.set(2.4, 3.0, 2.8);
+  } else {
+    if (shotType === "channel_split") {
+      heroGroup.rotation.set(0, u * 0.65 - 0.2, 0);
+    }
+    camera.position.set(0.0, 0.55, 3.35);
+    camera.lookAt(0, -0.08, 0);
+    keyLight.position.set(2.8, 3.2, 3.0);
+  }
+}
+
+function renderChannelSplit(u, w, h) {
+  let leftMat = pbrMat, rightMat = pbrMat, leftLbl = "Final Lit PBR", rightLbl = "Final Lit PBR", splitFrac = 1.0;
+  if (hasCutout) {
+    if (u < 0.22) {
+      splitFrac = u / 0.22;
+      leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
+      rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
+    } else if (u < 0.44) {
+      splitFrac = (u - 0.22) / 0.22;
+      leftMat = matRough; leftLbl = "Roughness";
+      rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
+    } else if (u < 0.66) {
+      splitFrac = (u - 0.44) / 0.22;
+      leftMat = matOpacity; leftLbl = "Opacity (Cutout)";
+      rightMat = matRough; rightLbl = "Roughness";
+    } else if (u < 0.88) {
+      splitFrac = (u - 0.66) / 0.22;
+      leftMat = pbrMat; leftLbl = "Final Lit PBR";
+      rightMat = matOpacity; rightLbl = "Opacity (Cutout)";
+    } else {
+      splitFrac = 1.0;
+      leftMat = pbrMat; leftLbl = "Final Lit PBR";
+      rightMat = pbrMat; rightLbl = "Final Lit PBR";
+    }
+  } else {
+    if (u < 0.28) {
+      splitFrac = u / 0.28;
+      leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
+      rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
+    } else if (u < 0.56) {
+      splitFrac = (u - 0.28) / 0.28;
+      leftMat = matRough; leftLbl = "Roughness";
+      rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
+    } else if (u < 0.84) {
+      splitFrac = (u - 0.56) / 0.28;
+      leftMat = pbrMat; leftLbl = "Final Lit PBR";
+      rightMat = matRough; rightLbl = "Roughness";
+    } else {
+      splitFrac = 1.0;
+      leftMat = pbrMat; leftLbl = "Final Lit PBR";
+      rightMat = pbrMat; rightLbl = "Final Lit PBR";
+    }
+  }
+
+  const splitPx = Math.round(splitFrac * w);
+  if (splitPx > 2 && splitPx < w - 2) {
+    renderer.setScissorTest(true);
+    setDisplacedMat(leftMat);
+    renderer.setScissor(0, 0, splitPx, h);
+    renderer.render(scene, camera);
+    setDisplacedMat(rightMat);
+    renderer.setScissor(splitPx, 0, w - splitPx, h);
+    renderer.render(scene, camera);
+    renderer.setScissorTest(false);
+
+    wipeBar.style.display = "block";
+    wipeBar.style.left = `${splitPx}px`;
+    pillL.style.display = "block";
+    pillL.textContent = leftLbl;
+    pillR.style.display = "block";
+    pillR.textContent = rightLbl;
+  } else {
+    setDisplacedMat(leftMat);
+    renderer.render(scene, camera);
+    pillL.style.display = "block";
+    pillL.textContent = leftLbl;
   }
 }
 
@@ -386,6 +561,16 @@ window.__renderFrame = function(frameIdx, totalFrames, shotType) {
   heroGroup.visible = true;
   if (tilingPlane) tilingPlane.visible = false;
   if (wallMesh) wallMesh.visible = hasCutout;
+
+  if (useExplicitMesh) {
+    applyExplicitMeshCamera(shotType, u);
+    if (shotType === "channel_split") {
+      renderChannelSplit(u, w, h);
+    } else {
+      renderer.render(scene, camera);
+    }
+    return;
+  }
 
   if (shotType === "turntable") {
     setRepeat(hasCutout ? 1.5 : 2.0, hasCutout ? 1.15 : 2.0);
@@ -477,77 +662,7 @@ window.__renderFrame = function(frameIdx, totalFrames, shotType) {
       keyLight.position.set(2.8, 3.2, 3.0);
     }
 
-    // Continuous left-to-right channel wipe with zero visual jumps:
-    //   Opaque: Albedo -> Normal -> Roughness -> Final Lit PBR
-    //   Cutout: Albedo -> Normal -> Roughness -> Opacity (Cutout) -> Final Lit PBR
-    let leftMat = pbrMat, rightMat = pbrMat, leftLbl = "Final Lit PBR", rightLbl = "Final Lit PBR", splitFrac = 1.0;
-    if (hasCutout) {
-      if (u < 0.22) {
-        splitFrac = u / 0.22;
-        leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
-        rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
-      } else if (u < 0.44) {
-        splitFrac = (u - 0.22) / 0.22;
-        leftMat = matRough; leftLbl = "Roughness";
-        rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
-      } else if (u < 0.66) {
-        splitFrac = (u - 0.44) / 0.22;
-        leftMat = matOpacity; leftLbl = "Opacity (Cutout)";
-        rightMat = matRough; rightLbl = "Roughness";
-      } else if (u < 0.88) {
-        splitFrac = (u - 0.66) / 0.22;
-        leftMat = pbrMat; leftLbl = "Final Lit PBR";
-        rightMat = matOpacity; rightLbl = "Opacity (Cutout)";
-      } else {
-        splitFrac = 1.0;
-        leftMat = pbrMat; leftLbl = "Final Lit PBR";
-        rightMat = pbrMat; rightLbl = "Final Lit PBR";
-      }
-    } else {
-      if (u < 0.28) {
-        splitFrac = u / 0.28;
-        leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
-        rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
-      } else if (u < 0.56) {
-        splitFrac = (u - 0.28) / 0.28;
-        leftMat = matRough; leftLbl = "Roughness";
-        rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
-      } else if (u < 0.84) {
-        splitFrac = (u - 0.56) / 0.28;
-        leftMat = pbrMat; leftLbl = "Final Lit PBR";
-        rightMat = matRough; rightLbl = "Roughness";
-      } else {
-        splitFrac = 1.0;
-        leftMat = pbrMat; leftLbl = "Final Lit PBR";
-        rightMat = pbrMat; rightLbl = "Final Lit PBR";
-      }
-    }
-
-    const splitPx = Math.round(splitFrac * w);
-    if (splitPx > 2 && splitPx < w - 2) {
-      renderer.setScissorTest(true);
-      // Left side
-      setDisplacedMat(leftMat);
-      renderer.setScissor(0, 0, splitPx, h);
-      renderer.render(scene, camera);
-      // Right side
-      setDisplacedMat(rightMat);
-      renderer.setScissor(splitPx, 0, w - splitPx, h);
-      renderer.render(scene, camera);
-      renderer.setScissorTest(false);
-
-      wipeBar.style.display = "block";
-      wipeBar.style.left = `${splitPx}px`;
-      pillL.style.display = "block";
-      pillL.textContent = leftLbl;
-      pillR.style.display = "block";
-      pillR.textContent = rightLbl;
-    } else {
-      setDisplacedMat(leftMat);
-      renderer.render(scene, camera);
-      pillL.style.display = "block";
-      pillL.textContent = leftLbl;
-    }
+    renderChannelSplit(u, w, h);
     return;
   }
 

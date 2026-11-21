@@ -23,7 +23,7 @@
       "title": "How to Use \u2014 hypbr Photo to PBR",
       "properties": {},
       "widgets_values": [
-        "## hypbr \u2014 Photo to 16-Map PBR + Interactive 3D & Video\n\nTurn a single surface photograph into **16 seamlessly tileable PBR maps**, inspect it live in **Texture Viewer Pro**, render a **3D preview video**, and export an engine-ready **GLB/glTF**.\n\n### Quick Steps\n1. **Load Surface Photo**: Pick any close-up surface photo (`hypbr_granite_sample.jpg` is preloaded).\n2. **Convert Photo to 16 PBR Maps**:\n   - `preset`: Choose the 47-node material tuning (`carved-stone`, `weathered-timber`, `glazed-tile`, `ornamental-iron`, `hardops-plate`, `v13-default`).\n   - `tileable`: Keep **true** for seamless tiling.\n   - `transparency`: `auto` keeps opaque materials strictly opaque (`alpha_map` left disconnected).\n3. **Texture Viewer Pro (Live 3D)**: Orbit, zoom, toggle sphere/cube/torus/plane/showcase, or click **Load GLB** and pick `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb`.\n4. **3D Preview Video & Export**: Renders a deterministic Three.js turntable MP4 and exports `glb` into `ComfyUI/output/hypbr_exports/`.\n\n### Licensing Note\n`hypbr` graph & code are **MIT**, while **Apple Depth Pro 2** weights (`depthpro2-s`) downloaded on first run are licensed for **non-commercial research only (Apple AMLR)**."
+        "## hypbr \u2014 Photo to 16-Map PBR + Interactive 3D & Video\n\nTurn a single surface photograph into **16 seamlessly tileable PBR maps**, inspect it live in **Texture Viewer Pro**, render a **3D preview video**, and export an engine-ready **GLB/glTF**.\n\n### Quick Steps\n1. **Load Surface Photo**: Pick any close-up surface photo (`hypbr_granite_sample.jpg` is preloaded).\n2. **Convert Photo to 16 PBR Maps**:\n   - `preset`: Choose the 47-node material tuning (`carved-stone`, `weathered-timber`, `glazed-tile`, `ornamental-iron`, `hardops-plate`, `v13-default`).\n   - `tileable`: Keep **true** for seamless tiling.\n   - `transparency`: `auto` keeps opaque materials strictly opaque (`alpha_map` left disconnected).\n3. **Texture Viewer Pro (Live 3D)**: Its **Mesh** dropdown already includes Sphere, Cube, Torus, Plane, and Showcase (this workflow leaves the default on Sphere; switch to **Plane** for a flat displaced preview). Or click **Load GLB** and pick `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb`.\n4. **3D Preview Video & Export**: Renders a deterministic Three.js turntable MP4 and exports `glb` into `ComfyUI/output/hypbr_exports/`. On **hypbr Render Preview Video**, the **Mesh** dropdown (`auto` / sphere / cube / cylinder / plane) applies to every shot \u2014 `auto` keeps the studio sphere+swatch layout; `plane` is a finely subdivided displaced plane at ~40\u00b0 with a grazing light.\n\n### Licensing Note\n`hypbr` graph & code are **MIT**, while **Apple Depth Pro 2** weights (`depthpro2-s`) downloaded on first run are licensed for **non-commercial research only (Apple AMLR)**.\n"
       ]
     },
     {
@@ -437,6 +437,7 @@
       "widgets_values": [
         "",
         "turntable",
+        "auto",
         2.0,
         24,
         "960x540",
@@ -585,7 +586,7 @@
       "title": "Tip \u2014 Cylinder & Rounded Cube Meshes",
       "properties": {},
       "widgets_values": [
-        "Want a cylinder or rounded cube in **Texture Viewer Pro**? Click its GLB load button and select `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb`."
+        "Want a cylinder or rounded cube in **Texture Viewer Pro**? Click its GLB load button and select `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb`. Its Mesh dropdown also has a built-in **Plane** (default stays Sphere)."
       ]
     }
   ],

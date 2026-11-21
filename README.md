@@ -10,7 +10,7 @@ Generate **16 seamlessly tileable PBR maps** from a single photo or 69+ procedur
   1. **hypbr Photo to PBR**: Convert any surface photo (`IMAGE`) into 16 seamless PBR maps (`albedo`, `normal`, `bent_normal`, `height`, `height16`, `ao`, `roughness`, `metallic`, `orm`, `curvature`, `cavity`, `edge_wear`, `anisotropy`, `specular`, `thickness`, `opacity`, `preview`, `material_dir`).
   2. **hypbr Procedural Material**: Synthesize any of `hypbr`'s 69+ seamless procedural materials (including `chainlink_fence_galvanized` with real over/under diamond wire weave, rust streaks, and cutout `opacity.png`, plus `hardops_plate`).
   3. **hypbr Blend**: Physically blend two material folders via `height`, `cavity`, or `linear` mode with recomputed HBAO, curvature, ORM, and gated opacity.
-  4. **hypbr Render Preview Video**: Deterministic headless Three.js studio preview (`turntable`, `lightorbit`, `closeup_displacement`, `tiling_zoom`, `channel_split`) outputting an MP4 file plus an `IMAGE` frame batch for `CreateVideo` / `SaveVideo` or `VHS_VideoCombine`. Cutout materials render as a framed fence panel casting diamond shadows across a studio wall & floor.
+  4. **hypbr Render Preview Video**: Deterministic headless Three.js studio preview (`turntable`, `lightorbit`, `closeup_displacement`, `tiling_zoom`, `channel_split`) with a **Mesh** dropdown (`auto`, `sphere`, `cube`, `cylinder`, `plane`) that applies to every shot. `auto` (default) keeps the current studio layout — a framed fence panel for cutouts, or a sphere + swatch otherwise. `plane` is a finely subdivided displaced plane viewed at ~40° with a grazing light so relief (and cutout shadows on the studio wall/floor) reads clearly. Outputs an MP4 plus an `IMAGE` frame batch for `CreateVideo` / `SaveVideo` or `VHS_VideoCombine`.
   5. **hypbr Export**: Package any material folder for `glb`, `gltf`, `blender`, `unreal`, `unity`, `unity-hdrp`, `godot`, `threejs`, `materialx`, `usd`, `vulkan`, or `all`.
 
 - **Smart `transparency: auto | on | off` gating**:
@@ -21,7 +21,12 @@ Generate **16 seamlessly tileable PBR maps** from a single photo or 69+ procedur
 - **Bundled 3D preview meshes (`assets/`)**:
   - `assets/cylinder.glb` (UV-mapped cylinder)
   - `assets/rounded_cube.glb` (UV-mapped beveled cube)
-  Load either file in **Texture Viewer Pro** using its **Load GLB** button!
+  Load either file in **Texture Viewer Pro** using its **Load GLB** button. Texture Viewer Pro's own **Mesh** dropdown already includes Sphere, Cube, Torus, Plane, and Showcase (workflows leave the default on Sphere).
+
+- **CLI mesh flag** (same options as the Comfy node, works with every shot):
+  ```bash
+  python video_preview/render_demo.py ./my_material --mesh plane --shot lightorbit --seconds 4 --out plane.mp4
+  ```
 
 ---
 

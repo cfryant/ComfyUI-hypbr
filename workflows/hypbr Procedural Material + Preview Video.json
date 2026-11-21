@@ -23,7 +23,7 @@
       "title": "How to Use \u2014 hypbr Procedural Material",
       "properties": {},
       "widgets_values": [
-        "## hypbr \u2014 Procedural 16-Map Material + Live 3D & Video\n\nGenerate **100% MIT-licensed**, mathematically seamless **16-map PBR materials** (no photo needed), inspect live in **Texture Viewer Pro**, render a **3D preview video**, and export glTF/GLB.\n\n### Quick Steps\n1. **Synthesize Seamless Material**:\n   - `material`: Default is `chainlink_fence_galvanized` (over/under diamond wire weave, rust streaks, and transparent `opacity` holes).\n   - `transparency`: `auto` writes `opacity.png` only for cutout materials (>0.5% holes). Set `off` to force opaque.\n2. **Texture Viewer Pro (Live 3D)**: `alpha_map` is wired for `chainlink_fence_galvanized` cutout transparency. If you switch to an opaque material, disconnect `alpha_map` for crisp opaque sorting. Load `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb` via its GLB button!\n3. **Render 3D Video**: Uses `lightorbit` by default so orbiting sunlight casts **real diamond mesh shadows** onto the background wall & floor.\n4. **Export**: Writes `glb` with `alphaMode: \"MASK\"` and `doubleSided: true` when cutout is active (strictly `OPAQUE` otherwise)."
+        "## hypbr \u2014 Procedural 16-Map Material + Live 3D & Video\n\nGenerate **100% MIT-licensed**, mathematically seamless **16-map PBR materials** (no photo needed), inspect live in **Texture Viewer Pro**, render a **3D preview video**, and export glTF/GLB.\n\n### Quick Steps\n1. **Synthesize Seamless Material**:\n   - `material`: Default is `chainlink_fence_galvanized` (over/under diamond wire weave, rust streaks, and transparent `opacity` holes).\n   - `transparency`: `auto` writes `opacity.png` only for cutout materials (>0.5% holes). Set `off` to force opaque.\n2. **Texture Viewer Pro (Live 3D)**: `alpha_map` is wired for `chainlink_fence_galvanized` cutout transparency. If you switch to an opaque material, disconnect `alpha_map` for crisp opaque sorting. Texture Viewer Pro's **Mesh** dropdown already includes Sphere, Cube, Torus, Plane, and Showcase (this workflow leaves the default on Sphere; switch to **Plane** for a flat cutout preview). Load `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb` via its GLB button if you want those shapes.\n3. **Render 3D Video**: Uses `lightorbit` by default so orbiting sunlight casts **real diamond mesh shadows** onto the background wall & floor. The node's **Mesh** dropdown (`auto` / sphere / cube / cylinder / plane) works with every shot \u2014 `auto` keeps the framed fence panel; `plane` is a finely subdivided displaced plane at ~40\u00b0 with a grazing light and the shadow-catcher behind the cutout.\n4. **Export**: Writes `glb` with `alphaMode: \"MASK\"` and `doubleSided: true` when cutout is active (strictly `OPAQUE` otherwise).\n"
       ]
     },
     {
@@ -188,7 +188,7 @@
       "title": "Tip \u2014 Cutout Alpha & Custom GLBs",
       "properties": {},
       "widgets_values": [
-        "Switching to an opaque preset (e.g. `damascus_folded_steel`)? Disconnect `alpha_map` on Texture Viewer Pro. Need a cylinder? Load `ComfyUI-hypbr/assets/cylinder.glb`."
+        "Switching to an opaque preset (e.g. `damascus_folded_steel`)? Disconnect `alpha_map` on Texture Viewer Pro. Its Mesh dropdown includes a built-in **Plane** (default stays Sphere). Need a cylinder? Load `ComfyUI-hypbr/assets/cylinder.glb`."
       ]
     },
     {
@@ -416,6 +416,7 @@
       "widgets_values": [
         "",
         "lightorbit",
+        "auto",
         2.0,
         24,
         "960x540",

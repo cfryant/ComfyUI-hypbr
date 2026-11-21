@@ -141,6 +141,14 @@ VIDEO_SHOTS: tuple[str, ...] = (
     "channel_split",
 )
 
+VIDEO_MESHES: tuple[str, ...] = (
+    "auto",
+    "sphere",
+    "cube",
+    "cylinder",
+    "plane",
+)
+
 VIDEO_RESOLUTIONS: tuple[str, ...] = (
     "1280x720",
     "1920x1080",
@@ -719,7 +727,8 @@ class HypbrRenderPreviewVideo:
     CATEGORY = "hypbr"
     DESCRIPTION = (
         "Render a deterministic Three.js PBR studio preview video (MP4 + IMAGE frames batch). "
-        "Supports cutout shadow casting for materials with opacity.png."
+        "Supports cutout shadow casting for materials with opacity.png. "
+        "Mesh dropdown (auto/sphere/cube/cylinder/plane) applies to every shot."
     )
     RETURN_TYPES = ("STRING", "IMAGE")
     RETURN_NAMES = ("mp4_path", "frames")
@@ -741,7 +750,14 @@ class HypbrRenderPreviewVideo:
                     list(VIDEO_SHOTS),
                     {
                         "default": "lightorbit",
-                        "tooltip": "Camera/lighting preset. lightorbit sweeps shadows across the floor/wall; turntable spins the camera.",
+                        "tooltip": "Camera/lighting preset. lightorbit sweeps shadows across the floor/wall; turntable spins the camera. Works with every mesh option.",
+                    },
+                ),
+                "mesh": (
+                    list(VIDEO_MESHES),
+                    {
+                        "default": "auto",
+                        "tooltip": "Hero shape used for every shot. auto keeps the current studio layout (framed fence panel for cutouts, sphere+swatch otherwise). plane is a finely subdivided displaced plane viewed at ~40° with a grazing light so relief and cutout shadows read clearly.",
                     },
                 ),
                 "seconds": (
@@ -799,6 +815,7 @@ class HypbrRenderPreviewVideo:
         self,
         material_dir: str,
         shot: str,
+        mesh: str,
         seconds: float,
         fps: int,
         resolution: str,
@@ -817,7 +834,9 @@ class HypbrRenderPreviewVideo:
         height = int(parts[1]) - (int(parts[1]) % 2)
 
         prev_root = _get_output_root() / "hypbr_previews"
-        mp4_path = _next_numbered_file(prev_root, f"{output_name}_{shot}", ".mp4")
+        mesh_tag = mesh if mesh and mesh != "auto" else ""
+        prefix = f"{output_name}_{shot}_{mesh_tag}" if mesh_tag else f"{output_name}_{shot}"
+        mp4_path = _next_numbered_file(prev_root, prefix, ".mp4")
         env = _build_subprocess_env(_get_output_root() / "hypbr")
         # Ensure ffmpeg is discoverable inside render_demo.py
         env.setdefault("HYPBR_FFMPEG", _resolve_ffmpeg())
@@ -827,6 +846,7 @@ class HypbrRenderPreviewVideo:
             str(RENDER_DEMO_PY),
             str(mat_dir),
             "--shot", shot,
+            "--mesh", mesh,
             "--seconds", f"{float(seconds):.2f}",
             "--fps", str(int(fps)),
             "--res", f"{width}x{height}",

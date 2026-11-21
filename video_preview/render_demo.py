@@ -9,6 +9,7 @@ Examples:
   python render_demo.py ./demos/01_galvanized_chainlink_rust --shot lightorbit --seconds 6 --fps 30 --res 1920x1080 --out fence.mp4
   python render_demo.py ./demos/02_scifi_bulkhead_weathered --shot turntable --seconds 4 --fps 30 --res 1280x720 --out bulkhead.mp4
   python render_demo.py ./demos/04_damascus_blued_steel_wet --still damascus_still.png --res 800x600
+  python render_demo.py ./demos/02_scifi_bulkhead_weathered --mesh plane --shot lightorbit --seconds 4 --out plane.mp4
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ from playwright.sync_api import sync_playwright
 
 HERE = Path(__file__).resolve().parent
 SHOTS = ("turntable", "lightorbit", "closeup_displacement", "tiling_zoom", "channel_split", "still")
+MESHES = ("auto", "sphere", "cube", "cylinder", "plane")
 
 
 def find_browser_executable() -> str | None:
@@ -109,6 +111,7 @@ def render_video_or_still(
     still_u: float = 0.15,
     show_label: bool = True,
     transparency: str = "auto",
+    mesh: str = "auto",
 ) -> None:
     if not (mat_dir / "albedo_delit.png").exists():
         raise FileNotFoundError(f"Expected albedo_delit.png in {mat_dir}")
@@ -128,7 +131,7 @@ def render_video_or_still(
         launch_args += ["--use-gl=angle"]
 
     label_flag = "1" if show_label else "0"
-    url = f"http://127.0.0.1:{port}/scene.html?name={quote(mat_dir.name)}&label={label_flag}&transparency={quote(transparency)}"
+    url = f"http://127.0.0.1:{port}/scene.html?name={quote(mat_dir.name)}&label={label_flag}&transparency={quote(transparency)}&mesh={quote(mesh)}"
 
     try:
         with sync_playwright() as pw:
@@ -197,6 +200,13 @@ def main() -> int:
     ap.add_argument("--still-u", type=float, default=0.15, help="Normalized time [0..1] for --still (default: 0.15)")
     ap.add_argument("--no-label", action="store_true", help="Hide bottom-left material name label")
     ap.add_argument("--transparency", choices=("auto", "on", "off"), default="auto", help="Cutout opacity mode (default: auto)")
+    ap.add_argument(
+        "--mesh",
+        choices=MESHES,
+        default="auto",
+        help="Hero mesh: auto keeps the current studio layout (framed fence panel for cutouts, sphere+swatch otherwise); "
+             "sphere, cube, cylinder, or plane use that single shape with every shot (default: auto)",
+    )
     args = ap.parse_args()
 
     w, h = parse_res(args.res)
@@ -212,9 +222,10 @@ def main() -> int:
         still_u=args.still_u,
         show_label=not args.no_label,
         transparency=args.transparency,
+        mesh=args.mesh,
     )
     target = args.still if args.still is not None else args.out
-    print(f"Rendered {args.material_dir.name} ({args.shot}, {w}x{h}) -> {target}")
+    print(f"Rendered {args.material_dir.name} ({args.shot}, mesh={args.mesh}, {w}x{h}) -> {target}")
     return 0
 
 

@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>hypbr deterministic video renderer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0e14; font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
+  #canvas { width: 100vw; height: 100vh; display: block; }
+  /* Subtle corner title & channel-wipe HUD (only shown when active) */
+  #hud-title {
+    position: fixed; left: 28px; bottom: 24px; color: rgba(238, 242, 248, 0.88);
+    font-size: 16px; font-weight: 600; letter-spacing: 0.03em;
+    background: rgba(12, 16, 24, 0.68); backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px 12px;
+    pointer-events: none;
+  }
+  #wipe-bar {
+    position: fixed; top: 0; bottom: 0; width: 2px; background: rgba(94, 234, 212, 0.92);
+    box-shadow: 0 0 12px rgba(94, 234, 212, 0.75); display: none; pointer-events: none;
+  }
+  .pill {
+    position: fixed; top: 24px; padding: 6px 13px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: #eef2f8; background: rgba(12, 16, 24, 0.78);
+    border: 1px solid rgba(94, 234, 212, 0.45); display: none; pointer-events: none;
+  }
+  #pill-left { left: 28px; }
+  #pill-right { right: 28px; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="wipe-bar"></div>
+<div id="pill-left" class="pill"></div>
+<div id="pill-right" class="pill"></div>
+<div id="hud-title"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const params = new URLSearchParams(location.search);
+const matName = params.get("name") || "material";
+const showLabel = params.get("label") !== "0";
+const hudTitle = document.getElementById("hud-title");
+if (showLabel) {
+  hudTitle.textContent = matName;
+} else {
+  hudTitle.style.display = "none";
+}
+
+const canvas = document.getElementById("canvas");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.98;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0c1017);
+
+// HDRI-style procedural studio environment reflections
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.95;
+
+const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.05, 100);
+
+// Studio 3-point lighting with high-res shadow map
+const keyLight = new THREE.DirectionalLight(0xfff1de, 2.25);
+keyLight.position.set(2.8, 3.2, 3.0);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 0.5;
+keyLight.shadow.camera.far = 14.0;
+keyLight.shadow.camera.left = -2.8;
+keyLight.shadow.camera.right = 2.8;
+keyLight.shadow.camera.top = 2.8;
+keyLight.shadow.camera.bottom = -2.8;
+keyLight.shadow.bias = -0.0004;
+keyLight.shadow.normalBias = 0.015;
+
+const rimLight = new THREE.DirectionalLight(0x8bb8ff, 0.95);
+rimLight.position.set(-3.2, 2.2, -2.5);
+const hemi = new THREE.HemisphereLight(0xcbd5e1, 0x1e2430, 0.35);
+scene.add(keyLight, rimLight, hemi);
+
+// Helper to load textures cleanly and wait until everything is decoded
+const texCache = new Map();
+function loadTex(file, srgb = false) {
+  return new Promise((resolve) => {
+    const k = `${file}:${srgb}`;
+    if (texCache.has(k)) { resolve(texCache.get(k)); return; }
+    const img = new Image();
+    img.onload = () => {
+      const tex = new THREE.Texture(img);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(2, 2);
+      tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+      tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      tex.needsUpdate = true;
+      texCache.set(k, tex);
+      resolve(tex);
+    };
+    img.onerror = () => resolve(null);
+    img.src = `./mat/${file}`;
+  });
+}
+
+// Check if opacity.png exists and has meaningful cutout holes (>0.5% pixels < 0.5 alpha)
+const transparencyMode = (params.get("transparency") || "auto").toLowerCase();
+async function detectCutout(opTex) {
+  if (transparencyMode === "off") return false;
+  if (!opTex || !opTex.image) return false;
+  if (transparencyMode === "on") return true;
+  const img = opTex.image;
+  const c = document.createElement("canvas");
+  c.width = Math.min(img.width, 128);
+  c.height = Math.min(img.height, 128);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  let holeCount = 0;
+  const totalPx = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] < 128) holeCount++;
+  }
+  return totalPx > 0 && (holeCount / totalPx) > 0.005;
+}
+
+// Load all PBR maps
+const [albTex, nrmTex, rghTex, metTex, aoTex, hgtTex, opTex, nrmDispTex, rghDispTex, opDispTex] = await Promise.all([
+  loadTex("albedo_delit.png", true),
+  loadTex("normal.png", false),
+  loadTex("roughness.png", false),
+  loadTex("metallic.png", false),
+  loadTex("ao.png", false),
+  loadTex("height.png", false),
+  loadTex("opacity.png", false),
+  loadTex("normal.png", true),
+  loadTex("roughness.png", true),
+  loadTex("opacity.png", true),
+]);
+
+const hasCutout = await detectCutout(opTex);
+
+// Build primary PBR material + channel inspection materials for channel_split shot
+const dispScaleBase = hasCutout ? 0.024 : 0.036;
+const pbrMat = new THREE.MeshPhysicalMaterial({
+  map: albTex,
+  normalMap: nrmTex,
+  normalScale: new THREE.Vector2(1.1, 1.1),
+  roughnessMap: rghTex,
+  metalnessMap: metTex,
+  aoMap: aoTex,
+  aoMapIntensity: 0.9,
+  displacementMap: hgtTex,
+  displacementScale: dispScaleBase,
+  displacementBias: -dispScaleBase * 0.5,
+  roughness: 1.0,
+  metalness: 1.0,
+});
+
+const depthMat = new THREE.MeshDepthMaterial({
+  depthPacking: THREE.RGBADepthPacking,
+  displacementMap: hgtTex,
+  displacementScale: dispScaleBase,
+  displacementBias: -dispScaleBase * 0.5,
+});
+
+if (hasCutout && opTex) {
+  pbrMat.alphaMap = opTex;
+  pbrMat.alphaTest = 0.5;
+  pbrMat.side = THREE.DoubleSide;
+  depthMat.alphaMap = opTex;
+  depthMat.alphaTest = 0.5;
+}
+
+// Channel-visualization materials (all share real vertex displacement so splits align pixel-for-pixel!)
+function makeFlatMat(tex) {
+  const m = new THREE.MeshBasicMaterial({
+    map: tex,
+    side: hasCutout ? THREE.DoubleSide : THREE.FrontSide,
+  });
+  if (hasCutout && opTex) {
+    m.alphaMap = opTex;
+    m.alphaTest = 0.5;
+  }
+  return m;
+}
+// Wait: MeshBasicMaterial doesn't support displacementMap in Three.js; use unlit-style Shader/Standard or displaced MeshStandardMaterial with emissiveMap!
+// Using MeshStandardMaterial with color=0, emissive=white, emissiveMap=tex gives EXACT channel colors + identical vertex displacement + alphaTest!
+function makeDisplacedChannelMat(tex, useAlpha = true) {
+  const m = new THREE.MeshStandardMaterial({
+    color: 0x000000,
+    emissive: 0xffffff,
+    emissiveMap: tex,
+    roughness: 1.0,
+    metalness: 0.0,
+    toneMapped: false,
+    displacementMap: hgtTex,
+    displacementScale: dispScaleBase,
+    displacementBias: -dispScaleBase * 0.5,
+    side: hasCutout ? THREE.DoubleSide : THREE.FrontSide,
+  });
+  if (hasCutout && opTex && useAlpha) {
+    m.alphaMap = opTex;
+    m.alphaTest = 0.5;
+  }
+  return m;
+}
+
+const matAlbedo = makeDisplacedChannelMat(albTex, true);
+const matNormal = makeDisplacedChannelMat(nrmDispTex, true);
+const matRough = makeDisplacedChannelMat(rghDispTex, true);
+const matOpacity = makeDisplacedChannelMat(opDispTex || rghDispTex, false);
+
+// Build studio floor & backdrop wall
+const floorGeo = new THREE.PlaneGeometry(18, 18);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: hasCutout ? 0x3b4048 : 0x151922,
+  roughness: 0.85,
+  metalness: 0.05,
+});
+const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+floorMesh.rotation.x = -Math.PI / 2;
+floorMesh.position.y = -0.96;
+floorMesh.receiveShadow = true;
+scene.add(floorMesh);
+
+// Scene hero group (rotates during turntable / channel_split)
+const heroGroup = new THREE.Group();
+scene.add(heroGroup);
+
+let heroSphere = null;
+let heroBlock = null;
+let fencePanel = null;
+let tilingPlane = null;
+let wallMesh = null;
+const displacedMeshes = [];
+
+if (hasCutout) {
+  // Warm sunlit architectural wall behind the chain-link fence so transparency + cast diamond shadows read clearly
+  scene.background = new THREE.Color(0x232832);
+  const wallGeo = new THREE.PlaneGeometry(12, 7);
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: 0xa69d92,
+    roughness: 0.92,
+    metalness: 0.0,
+  });
+  wallMesh = new THREE.Mesh(wallGeo, wallMat);
+  wallMesh.position.set(0, 1.0, -1.25);
+  wallMesh.receiveShadow = true;
+  scene.add(wallMesh);
+
+  // Fence mesh panel inside a dark steel frame
+  const panelGeo = new THREE.PlaneGeometry(2.25, 1.70, 192, 144);
+  panelGeo.setAttribute("uv2", panelGeo.attributes.uv);
+  fencePanel = new THREE.Mesh(panelGeo, pbrMat);
+  fencePanel.customDepthMaterial = depthMat;
+  fencePanel.castShadow = true;
+  fencePanel.receiveShadow = true;
+  fencePanel.position.set(0, 0.05, 0.0);
+  heroGroup.add(fencePanel);
+  displacedMeshes.push(fencePanel);
+
+  // Sleek dark galvanized top/bottom/side frame rails around the panel
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x383e46, metalness: 0.85, roughness: 0.35 });
+  const topRail = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 2.34, 24), railMat);
+  topRail.rotation.z = Math.PI / 2;
+  topRail.position.set(0, 0.91, 0);
+  topRail.castShadow = true;
+  const botRail = topRail.clone();
+  botRail.position.set(0, -0.81, 0);
+  const leftPost = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 1.92, 24), railMat);
+  leftPost.position.set(-1.14, -0.02, 0);
+  leftPost.castShadow = true;
+  const rightPost = leftPost.clone();
+  rightPost.position.set(1.14, -0.02, 0);
+  heroGroup.add(topRail, botRail, leftPost, rightPost);
+
+  // Dedicated wide panel for tiling_zoom
+  const tileGeo = new THREE.PlaneGeometry(3.4, 2.5, 192, 144);
+  tileGeo.setAttribute("uv2", tileGeo.attributes.uv);
+  tilingPlane = new THREE.Mesh(tileGeo, pbrMat);
+  tilingPlane.customDepthMaterial = depthMat;
+  tilingPlane.castShadow = true;
+  tilingPlane.receiveShadow = true;
+  tilingPlane.visible = false;
+  scene.add(tilingPlane);
+  displacedMeshes.push(tilingPlane);
+} else {
+  // Dual-geometry hero setup: Displaced Sphere + Displaced Rounded Slab
+  const sphereGeo = new THREE.SphereGeometry(0.76, 192, 192);
+  sphereGeo.setAttribute("uv2", sphereGeo.attributes.uv);
+  heroSphere = new THREE.Mesh(sphereGeo, pbrMat);
+  heroSphere.customDepthMaterial = depthMat;
+  heroSphere.castShadow = true;
+  heroSphere.receiveShadow = true;
+  heroSphere.position.set(-0.82, -0.10, 0.0);
+  heroGroup.add(heroSphere);
+  displacedMeshes.push(heroSphere);
+
+  // Cleanly UV-mapped displaced swatch tile inside a sleek dark anodized backing tray
+  const swatchGroup = new THREE.Group();
+  swatchGroup.position.set(0.84, -0.10, 0.0);
+  swatchGroup.rotation.set(-0.16, -0.22, 0.0);
+  const backingGeo = new THREE.BoxGeometry(1.32, 1.32, 0.08);
+  const backingMat = new THREE.MeshStandardMaterial({ color: 0x1b2029, roughness: 0.45, metalness: 0.7 });
+  const backingMesh = new THREE.Mesh(backingGeo, backingMat);
+  backingMesh.castShadow = true;
+  backingMesh.receiveShadow = true;
+  backingMesh.position.z = -0.045;
+  swatchGroup.add(backingMesh);
+
+  const tileFaceGeo = new THREE.PlaneGeometry(1.22, 1.22, 192, 192);
+  tileFaceGeo.setAttribute("uv2", tileFaceGeo.attributes.uv);
+  heroBlock = new THREE.Mesh(tileFaceGeo, pbrMat);
+  heroBlock.customDepthMaterial = depthMat;
+  heroBlock.castShadow = true;
+  heroBlock.receiveShadow = true;
+  heroBlock.position.z = 0.004;
+  swatchGroup.add(heroBlock);
+  heroGroup.add(swatchGroup);
+  displacedMeshes.push(heroBlock);
+
+  // Dedicated displaced square tile for tiling_zoom shot
+  const tileGeo = new THREE.PlaneGeometry(3.2, 3.2, 224, 224);
+  tileGeo.setAttribute("uv2", tileGeo.attributes.uv);
+  tilingPlane = new THREE.Mesh(tileGeo, pbrMat);
+  tilingPlane.customDepthMaterial = depthMat;
+  tilingPlane.castShadow = true;
+  tilingPlane.receiveShadow = true;
+  tilingPlane.rotation.x = -0.35;
+  tilingPlane.visible = false;
+  scene.add(tilingPlane);
+  displacedMeshes.push(tilingPlane);
+}
+
+function setRepeat(rx, ry) {
+  for (const t of texCache.values()) {
+    t.repeat.set(rx, ry);
+  }
+}
+
+function setDisplacedMat(mat) {
+  for (const m of displacedMeshes) m.material = mat;
+}
+
+function setDispScale(sc) {
+  for (const m of [pbrMat, depthMat, matAlbedo, matNormal, matRough, matOpacity]) {
+    m.displacementScale = sc;
+    m.displacementBias = -sc * 0.5;
+  }
+}
+
+const wipeBar = document.getElementById("wipe-bar");
+const pillL = document.getElementById("pill-left");
+const pillR = document.getElementById("pill-right");
+
+// Deterministic per-frame evaluation called by Playwright
+window.__renderFrame = function(frameIdx, totalFrames, shotType) {
+  const u = totalFrames > 1 ? frameIdx / (totalFrames - 1) : 0.0;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+
+  // Reset defaults each frame
+  wipeBar.style.display = "none";
+  pillL.style.display = "none";
+  pillR.style.display = "none";
+  renderer.setScissorTest(false);
+  setDisplacedMat(pbrMat);
+  setDispScale(dispScaleBase);
+  heroGroup.visible = true;
+  if (tilingPlane) tilingPlane.visible = false;
+  if (wallMesh) wallMesh.visible = hasCutout;
+
+  if (shotType === "turntable") {
+    setRepeat(hasCutout ? 1.5 : 2.0, hasCutout ? 1.15 : 2.0);
+    if (hasCutout) {
+      // Gently sway panel back & forth (+-42 deg) so front, angled weave, & cast shadow stay framed
+      const ang = Math.sin(u * Math.PI * 2.0) * 0.65;
+      heroGroup.rotation.set(0, ang, 0);
+      camera.position.set(Math.sin(u * Math.PI * 2.0) * 0.6, 0.25 + 0.12 * Math.cos(u * Math.PI * 2.0), 3.15);
+      camera.lookAt(0, 0.0, -0.2);
+      keyLight.position.set(2.2, 2.6, 3.2);
+    } else {
+      heroGroup.rotation.set(0, 0, 0);
+      const az = u * Math.PI * 2.0 + 0.35;
+      const rad = 3.85;
+      const elev = 0.55 + 0.22 * Math.sin(u * Math.PI * 2.0);
+      camera.position.set(Math.sin(az) * rad, elev, Math.cos(az) * rad);
+      camera.lookAt(0, -0.1, 0);
+      keyLight.position.set(2.8, 3.2, 3.0);
+    }
+    renderer.render(scene, camera);
+    return;
+  }
+
+  if (shotType === "lightorbit") {
+    setRepeat(hasCutout ? 1.5 : 2.0, hasCutout ? 1.15 : 2.0);
+    heroGroup.rotation.set(0, hasCutout ? -0.22 : 0.0, 0);
+    if (hasCutout) {
+      camera.position.set(0.45, 0.32, 3.10);
+      camera.lookAt(0.0, -0.02, -0.35);
+      // Orbit key light in front hemisphere so shadow sweeps across the sunlit wall & floor behind fence
+      const az = -0.95 + u * 1.90;
+      keyLight.position.set(Math.sin(az) * 3.8, 1.7 + 0.9 * Math.sin(u * Math.PI * 2.0), Math.cos(az) * 3.6);
+    } else {
+      camera.position.set(0.0, 0.55, 3.45);
+      camera.lookAt(0, -0.12, 0);
+      const az = u * Math.PI * 2.0 + 0.4;
+      keyLight.position.set(Math.sin(az) * 4.0, 2.4 + 0.8 * Math.cos(u * Math.PI * 2.0), Math.cos(az) * 4.0);
+    }
+    renderer.render(scene, camera);
+    return;
+  }
+
+  if (shotType === "closeup_displacement") {
+    setRepeat(hasCutout ? 1.4 : 2.0, hasCutout ? 1.1 : 2.0);
+    setDispScale(hasCutout ? 0.032 : 0.068);
+    heroGroup.rotation.set(0, 0, 0);
+    if (hasCutout) {
+      // Smooth macro push-in across the woven knuckles at a grazing angle
+      const t = 0.5 - 0.5 * Math.cos(u * Math.PI);
+      camera.position.set(-0.7 + 1.4 * t, 0.22 - 0.12 * t, 2.15 - 0.95 * t);
+      camera.lookAt(0.05 * t, 0.02, 0);
+      keyLight.position.set(2.4, 2.2, 2.5);
+    } else {
+      // Sweep close across the hero sphere's displaced silhouette & into the slab bevels
+      const t = 0.5 - 0.5 * Math.cos(u * Math.PI);
+      camera.position.set(-1.35 + 2.10 * t, 0.48 - 0.26 * t, 2.15 - 0.65 * t);
+      camera.lookAt(-0.45 + 0.95 * t, -0.08, 0.05);
+      keyLight.position.set(2.6 - 1.5 * t, 2.6, 2.2);
+    }
+    renderer.render(scene, camera);
+    return;
+  }
+
+  if (shotType === "tiling_zoom") {
+    heroGroup.visible = false;
+    if (wallMesh) wallMesh.visible = false;
+    tilingPlane.visible = true;
+    const t = 0.5 - 0.5 * Math.cos(u * Math.PI);
+    const rep = 1.5 + 3.0 * t;
+    setRepeat(rep, hasCutout ? rep * 0.75 : rep);
+    camera.position.set(0.0, 0.55 * (1.0 - t) + 0.2 * t, 2.35 + 1.15 * t);
+    camera.lookAt(0, 0, 0);
+    keyLight.position.set(2.2, 3.0, 2.8);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  if (shotType === "channel_split") {
+    setRepeat(hasCutout ? 1.5 : 2.0, hasCutout ? 1.15 : 2.0);
+    if (hasCutout) {
+      heroGroup.rotation.set(0, Math.sin(u * Math.PI) * 0.25 - 0.12, 0);
+      camera.position.set(0.25, 0.22, 3.05);
+      camera.lookAt(0, 0.0, -0.2);
+      keyLight.position.set(2.0, 2.5, 3.2);
+    } else {
+      heroGroup.rotation.set(0, u * 0.65 - 0.2, 0);
+      camera.position.set(0.0, 0.52, 3.45);
+      camera.lookAt(0, -0.1, 0);
+      keyLight.position.set(2.8, 3.2, 3.0);
+    }
+
+    // Continuous left-to-right channel wipe with zero visual jumps:
+    //   Opaque: Albedo -> Normal -> Roughness -> Final Lit PBR
+    //   Cutout: Albedo -> Normal -> Roughness -> Opacity (Cutout) -> Final Lit PBR
+    let leftMat = pbrMat, rightMat = pbrMat, leftLbl = "Final Lit PBR", rightLbl = "Final Lit PBR", splitFrac = 1.0;
+    if (hasCutout) {
+      if (u < 0.22) {
+        splitFrac = u / 0.22;
+        leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
+        rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
+      } else if (u < 0.44) {
+        splitFrac = (u - 0.22) / 0.22;
+        leftMat = matRough; leftLbl = "Roughness";
+        rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
+      } else if (u < 0.66) {
+        splitFrac = (u - 0.44) / 0.22;
+        leftMat = matOpacity; leftLbl = "Opacity (Cutout)";
+        rightMat = matRough; rightLbl = "Roughness";
+      } else if (u < 0.88) {
+        splitFrac = (u - 0.66) / 0.22;
+        leftMat = pbrMat; leftLbl = "Final Lit PBR";
+        rightMat = matOpacity; rightLbl = "Opacity (Cutout)";
+      } else {
+        splitFrac = 1.0;
+        leftMat = pbrMat; leftLbl = "Final Lit PBR";
+        rightMat = pbrMat; rightLbl = "Final Lit PBR";
+      }
+    } else {
+      if (u < 0.28) {
+        splitFrac = u / 0.28;
+        leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
+        rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
+      } else if (u < 0.56) {
+        splitFrac = (u - 0.28) / 0.28;
+        leftMat = matRough; leftLbl = "Roughness";
+        rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
+      } else if (u < 0.84) {
+        splitFrac = (u - 0.56) / 0.28;
+        leftMat = pbrMat; leftLbl = "Final Lit PBR";
+        rightMat = matRough; rightLbl = "Roughness";
+      } else {
+        splitFrac = 1.0;
+        leftMat = pbrMat; leftLbl = "Final Lit PBR";
+        rightMat = pbrMat; rightLbl = "Final Lit PBR";
+      }
+    }
+
+    const splitPx = Math.round(splitFrac * w);
+    if (splitPx > 2 && splitPx < w - 2) {
+      renderer.setScissorTest(true);
+      // Left side
+      setDisplacedMat(leftMat);
+      renderer.setScissor(0, 0, splitPx, h);
+      renderer.render(scene, camera);
+      // Right side
+      setDisplacedMat(rightMat);
+      renderer.setScissor(splitPx, 0, w - splitPx, h);
+      renderer.render(scene, camera);
+      renderer.setScissorTest(false);
+
+      wipeBar.style.display = "block";
+      wipeBar.style.left = `${splitPx}px`;
+      pillL.style.display = "block";
+      pillL.textContent = leftLbl;
+      pillR.style.display = "block";
+      pillR.textContent = rightLbl;
+    } else {
+      setDisplacedMat(leftMat);
+      renderer.render(scene, camera);
+      pillL.style.display = "block";
+      pillL.textContent = leftLbl;
+    }
+    return;
+  }
+
+  // Default hero still
+  setRepeat(hasCutout ? 1.5 : 2.0, hasCutout ? 1.15 : 2.0);
+  heroGroup.rotation.set(0, hasCutout ? -0.18 : 0.0, 0);
+  if (hasCutout) {
+    camera.position.set(0.35, 0.24, 3.00);
+    camera.lookAt(0, -0.02, -0.25);
+    keyLight.position.set(2.2, 2.3, 3.0);
+  } else {
+    camera.position.set(0.0, 0.45, 3.35);
+    camera.lookAt(0, -0.1, 0);
+    keyLight.position.set(2.7, 3.1, 3.0);
+  }
+  renderer.render(scene, camera);
+};
+
+window.__ready = true;
+</script>
+</body>
+</html>

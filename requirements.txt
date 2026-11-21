@@ -1,0 +1,5 @@
+# Minimal requirements inside ComfyUI's own Python environment.
+# hypbr itself can live in a separate venv (set HYPBR_PYTHON) or in ComfyUI's env:
+#   pip install git+https://github.com/cfryant/hypbr.git
+numpy
+pillow

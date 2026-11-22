@@ -1,14 +1,14 @@
 # ComfyUI-hypbr
 
-ComfyUI custom nodes and ready-to-run workflows for [**hypbr**](https://github.com/wrong-nebula/hypbr) (using the [`cfryant/hypbr`](https://github.com/cfryant/hypbr) fork with 16-map seamless cutout opacity, `chainlink_fence_galvanized`, and `--transparency auto|on|off` gating).
+ComfyUI custom nodes and ready-to-run workflows for [**hypbr**](https://github.com/wrong-nebula/hypbr) (using the [`cfryant/hypbr`](https://github.com/cfryant/hypbr) fork with 17-map seamless cutout opacity + sRGB emissive glow, `--transparency auto|on|off`, and `--emissive auto|on|off` gating).
 
-Generate **16 seamlessly tileable PBR maps** from a single photo or 69+ procedural materials, inspect them live in 3D via [**ComfyUI-Texture-Simple**](https://github.com/gokayfem/ComfyUI-Texture-Simple) (**Texture Viewer Pro**), render deterministic Three.js turntable / light-orbit MP4 preview videos, and export directly to glTF/GLB, Blender, Unreal, Unity, Godot, MaterialX, USD, and Vulkan.
+Generate **17 seamlessly tileable PBR maps** from a single photo or 75+ procedural materials, inspect them live in 3D via [**ComfyUI-Texture-Simple**](https://github.com/gokayfem/ComfyUI-Texture-Simple) (**Texture Viewer Pro**), render deterministic Three.js turntable / light-orbit MP4 preview videos, and export directly to glTF/GLB, Blender, Unreal, Unity, Godot, MaterialX, USD, and Vulkan.
 
 ## Features
 
 - **5 ComfyUI nodes** (zero extra heavy packages inside ComfyUI's own Python env — runs `hypbr` via a configurable `HYPBR_PYTHON` subprocess or auto-detected venv):
-  1. **hypbr Photo to PBR**: Convert any surface photo (`IMAGE`) into 16 seamless PBR maps (`albedo`, `normal`, `bent_normal`, `height`, `height16`, `ao`, `roughness`, `metallic`, `orm`, `curvature`, `cavity`, `edge_wear`, `anisotropy`, `specular`, `thickness`, `opacity`, `preview`, `material_dir`).
-  2. **hypbr Procedural Material**: Synthesize any of `hypbr`'s 69+ seamless procedural materials (including `chainlink_fence_galvanized` with real over/under diamond wire weave, rust streaks, and cutout `opacity.png`, plus `hardops_plate`).
+  1. **hypbr Photo to PBR**: Convert any surface photo (`IMAGE`) into 17 seamless PBR maps (`albedo`, `normal`, `bent_normal`, `height`, `height16`, `ao`, `roughness`, `metallic`, `orm`, `curvature`, `cavity`, `edge_wear`, `anisotropy`, `specular`, `thickness`, `opacity`, `emissive`, `preview`, `material_dir`).
+  2. **hypbr Procedural Material**: Synthesize any of `hypbr`'s 75+ seamless procedural materials (including `chainlink_fence_galvanized` with real over/under diamond wire weave, rust streaks, and cutout `opacity.png`, plus `hardops_plate`).
   3. **hypbr Blend**: Physically blend two material folders via `height`, `cavity`, or `linear` mode with recomputed HBAO, curvature, ORM, and gated opacity.
   4. **hypbr Render Preview Video**: Deterministic headless Three.js studio preview (`turntable`, `lightorbit`, `closeup_displacement`, `tiling_zoom`, `channel_split`) with a **Mesh** dropdown (`auto`, `sphere`, `cube`, `cylinder`, `plane`) that applies to every shot. `auto` (default) keeps the current studio layout — a framed fence panel for cutouts, or a sphere + swatch otherwise. `plane` is a finely subdivided displaced plane viewed at ~40° with a grazing light so relief (and cutout shadows on the studio wall/floor) reads clearly. Outputs an MP4 plus an `IMAGE` frame batch for `CreateVideo` / `SaveVideo` or `VHS_VideoCombine`.
   5. **hypbr Export**: Package any material folder for `glb`, `gltf`, `blender`, `unreal`, `unity`, `unity-hdrp`, `godot`, `threejs`, `materialx`, `usd`, `vulkan`, or `all`.
@@ -17,6 +17,13 @@ Generate **16 seamlessly tileable PBR maps** from a single photo or 69+ procedur
   - `auto` *(default)*: Only emits `opacity.png` and glTF `alphaMode: "MASK"` / `doubleSided: true` when the material is a transparent preset (e.g. `chainlink_fence_galvanized`) or has `> 0.5%` transparent pixels (`< 0.5` alpha). All opaque materials stay strictly opaque (`RGB` base color, no `alphaMode: MASK`).
   - `on`: Always emits `opacity.png` and cutout export flags.
   - `off`: Forces opaque output everywhere (even for `chainlink_fence_galvanized`).
+
+- **Smart `emissive: auto | on | off` gating & glowing presets**:
+  - `auto` *(default)*: Only emits `emissive.png` and engine emissive slots (`emissiveTexture` + `emissiveFactor`, plus `KHR_materials_emissive_strength` when `emissive_strength > 1.0`) when the material is an emissive preset (or blend containing one) with `> 0.1%` glowing pixels. Non-emissive materials never emit `emissive.png` or an emissive slot.
+  - `on`: Always emits `emissive.png` (black if there is no glow) and export slots.
+  - `off`: Disables emissive output everywhere.
+  - Includes 6 opaque glowing materials (`cooling_lava_cracks`, `scifi_panel_emissive`, `circuit_board_glow`, `glowing_charcoal_embers`, `carved_runic_stone`, `neon_brick_wall`) with zero transparency, plus automatic studio-light dimming during `lightorbit` video previews so glow reads clearly.
+  - **Note on Texture Viewer Pro**: `ComfyUI-Texture-Simple` (`Texture Viewer Pro`) does not expose an `emissive_map` input port (it supports `color`, `displacement`, `normal`, `ao`, `metalness`, `roughness`, and `alpha`). Inspect the `emissive` output image or use **hypbr Render Preview Video** / **hypbr Export** (`.glb`) to see emissive glow in 3D.
 
 - **Bundled 3D preview meshes (`assets/`)**:
   - `assets/cylinder.glb` (UV-mapped cylinder)

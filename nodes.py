@@ -46,6 +46,7 @@ PBR_MAP_SPECS: tuple[tuple[str, str, float], ...] = (
     ("specular", "specular.png", 0.5),
     ("thickness", "thickness.png", 0.5),
     ("opacity", "opacity.png", 1.0),
+    ("emissive", "emissive.png", 0.0),
     ("preview", "preview.png", 0.2),
 )
 
@@ -61,9 +62,12 @@ MATERIAL_CATALOG: tuple[str, ...] = (
     "cable_knit_wool",
     "carbon_fiber_weave",
     "carrara_veined_marble",
+    "carved_runic_stone",
     "cast_iron_skillet_pebble",
     "chainlink_wire_mesh",
+    "circuit_board_glow",
     "circular_perf_sheet",
+    "cooling_lava_cracks",
     "corkboard_pin_surface",
     "corrugated_cardboard",
     "corrugated_sheet_metal",
@@ -77,6 +81,7 @@ MATERIAL_CATALOG: tuple[str, ...] = (
     "fluted_reeded_glass",
     "frosted_prism_diffuser",
     "gilded_tin_ceiling_tile",
+    "glowing_charcoal_embers",
     "hammered_copper_dimple",
     "heatsink_extrusion_fins",
     "herringbone_tweed_wool",
@@ -88,6 +93,7 @@ MATERIAL_CATALOG: tuple[str, ...] = (
     "mermaid_fishscale_tile",
     "micro_hex_grip",
     "modular_stud_grid",
+    "neon_brick_wall",
     "patinated_verdigris_bronze",
     "pcb_solder_mask_traces",
     "penny_round_mosaic",
@@ -98,6 +104,7 @@ MATERIAL_CATALOG: tuple[str, ...] = (
     "ribbed_rubber_mat",
     "riveted_sheet_seam",
     "rubber_tread_stair",
+    "scifi_panel_emissive",
     "sidewalk_expansion_joint",
     "solar_cell_grid",
     "speaker_mesh_hex",
@@ -158,6 +165,8 @@ VIDEO_RESOLUTIONS: tuple[str, ...] = (
 )
 
 TRANSPARENCY_MODES: tuple[str, ...] = ("auto", "on", "off")
+
+EMISSIVE_MODES: tuple[str, ...] = ("auto", "on", "off")
 
 EXPORT_TARGETS: tuple[str, ...] = (
     "glb",
@@ -410,8 +419,8 @@ MAP_RETURN_NAMES = tuple([spec[0] for spec in PBR_MAP_SPECS] + ["material_dir"])
 class HypbrProceduralMaterial:
     CATEGORY = "hypbr"
     DESCRIPTION = (
-        "Synthesize a seamless 16-map procedural PBR material (including cutout opacity "
-        "for chainlink_fence_galvanized) into ComfyUI's output folder."
+        "Synthesize a seamless 17-map procedural PBR material (including cutout opacity "
+        "and sRGB emissive glow for glowing presets) into ComfyUI's output folder."
     )
     RETURN_TYPES = MAP_RETURN_TYPES
     RETURN_NAMES = MAP_RETURN_NAMES
@@ -464,6 +473,13 @@ class HypbrProceduralMaterial:
                         "tooltip": "auto = write opacity.png only for cutout materials (>0.5% holes); on = always write opacity.png; off = force opaque.",
                     },
                 ),
+                "emissive": (
+                    list(EMISSIVE_MODES),
+                    {
+                        "default": "auto",
+                        "tooltip": "auto = write emissive.png only for glowing presets (>0.1% lit pixels); on = always write emissive.png (black if none); off = no emissive.",
+                    },
+                ),
                 "output_name": (
                     "STRING",
                     {
@@ -481,7 +497,8 @@ class HypbrProceduralMaterial:
         seed: int,
         wear: float,
         transparency: str,
-        output_name: str,
+        emissive: str = "auto",
+        output_name: str = "proc",
     ) -> tuple[Any, ...]:
         out_root = _get_output_root() / "hypbr"
         run_dir = _next_numbered_dir(out_root, f"{output_name}_{material}")
@@ -493,6 +510,7 @@ class HypbrProceduralMaterial:
             "--seed", str(int(seed)),
             "--wear", f"{float(wear):.3f}",
             "--transparency", transparency,
+            "--emissive", emissive,
             "--out", str(run_dir),
         ]
         _run_subprocess(cmd, env=env)
@@ -505,7 +523,7 @@ class HypbrProceduralMaterial:
 class HypbrPhotoToPBR:
     CATEGORY = "hypbr"
     DESCRIPTION = (
-        "Convert a single surface photo into 16 seamless PBR maps using Apple Depth Pro 2 "
+        "Convert a single surface photo into 17 seamless PBR maps using Apple Depth Pro 2 "
         "and hypbr's 47-node PBR graph. Note: Depth Pro 2 weights are Apple non-commercial."
     )
     RETURN_TYPES = MAP_RETURN_TYPES
@@ -567,6 +585,13 @@ class HypbrPhotoToPBR:
                         "tooltip": "auto = opaque unless >0.5% alpha holes exist; on = always write opacity.png; off = force opaque.",
                     },
                 ),
+                "emissive": (
+                    list(EMISSIVE_MODES),
+                    {
+                        "default": "auto",
+                        "tooltip": "auto = write emissive.png only when glowing (>0.1% lit pixels); on = always write emissive.png (black if none); off = no emissive.",
+                    },
+                ),
             },
         }
 
@@ -579,6 +604,7 @@ class HypbrPhotoToPBR:
         output_name: str,
         normal_convention: str = "OpenGL (+Y)",
         transparency: str = "auto",
+        emissive: str = "auto",
     ) -> tuple[Any, ...]:
         out_root = _get_output_root() / "hypbr"
         run_dir = _next_numbered_dir(out_root, output_name)
@@ -600,6 +626,7 @@ class HypbrPhotoToPBR:
             "--out", str(run_dir),
             "--preset", preset,
             "--transparency", transparency,
+            "--emissive", emissive,
         ]
         if tileable:
             cmd.append("--tileable")
@@ -621,7 +648,7 @@ class HypbrBlend:
     CATEGORY = "hypbr"
     DESCRIPTION = (
         "Physically blend two hypbr material folders using height-lerp, cavity-mask, or linear "
-        "blending, recomputing AO, curvature, ORM, and opacity."
+        "blending, recomputing AO, curvature, ORM, opacity, and emissive."
     )
     RETURN_TYPES = MAP_RETURN_TYPES
     RETURN_NAMES = MAP_RETURN_NAMES
@@ -679,6 +706,13 @@ class HypbrBlend:
                         "tooltip": "auto = carry opacity only when a source has active cutout holes; on = always write opacity.png; off = force opaque.",
                     },
                 ),
+                "emissive": (
+                    list(EMISSIVE_MODES),
+                    {
+                        "default": "auto",
+                        "tooltip": "auto = carry emissive only when a source glows; on = always write emissive.png (black if none); off = no emissive.",
+                    },
+                ),
                 "output_name": (
                     "STRING",
                     {
@@ -697,7 +731,8 @@ class HypbrBlend:
         factor: float,
         contrast: float,
         transparency: str,
-        output_name: str,
+        emissive: str = "auto",
+        output_name: str = "blended",
     ) -> tuple[Any, ...]:
         dir_a = Path(material_dir_a.strip())
         dir_b = Path(material_dir_b.strip())
@@ -718,6 +753,7 @@ class HypbrBlend:
             "--factor", f"{float(factor):.3f}",
             "--contrast", f"{float(contrast):.3f}",
             "--transparency", transparency,
+            "--emissive", emissive,
         ]
         _run_subprocess(cmd, env=env)
         return (*_load_all_maps(mat_dir), str(mat_dir))
@@ -801,6 +837,23 @@ class HypbrRenderPreviewVideo:
                         "tooltip": "auto = use cutout fence scene only when opacity.png has >0.5% transparent holes; on = force cutout; off = force opaque sphere+swatch.",
                     },
                 ),
+                "emissive": (
+                    list(EMISSIVE_MODES),
+                    {
+                        "default": "auto",
+                        "tooltip": "auto = enable emissiveMap + lightorbit studio dim when emissive.png glows; on = force emissive; off = disable glow.",
+                    },
+                ),
+                "emissive_strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 10.0,
+                        "step": 0.1,
+                        "tooltip": "Emissive glow multiplier applied in Three.js preview (1.0 = calibrated default).",
+                    },
+                ),
                 "output_name": (
                     "STRING",
                     {
@@ -821,7 +874,9 @@ class HypbrRenderPreviewVideo:
         resolution: str,
         show_label: bool,
         transparency: str,
-        output_name: str,
+        emissive: str = "auto",
+        emissive_strength: float = 1.0,
+        output_name: str = "preview",
     ) -> dict[str, Any]:
         mat_dir = Path(material_dir.strip())
         if not (mat_dir / "albedo_delit.png").exists():
@@ -851,6 +906,8 @@ class HypbrRenderPreviewVideo:
             "--fps", str(int(fps)),
             "--res", f"{width}x{height}",
             "--transparency", transparency,
+            "--emissive", emissive,
+            "--emissive-strength", f"{float(emissive_strength):.3f}",
             "--out", str(mp4_path),
         ]
         if not show_label:
@@ -907,6 +964,23 @@ class HypbrExport:
                         "tooltip": "auto = alphaMode MASK only if >0.5% cutout holes exist; on = force MASK; off = force OPAQUE RGB export.",
                     },
                 ),
+                "emissive": (
+                    list(EMISSIVE_MODES),
+                    {
+                        "default": "auto",
+                        "tooltip": "auto = export emissive map/slot only when emissive.png glows; on = force emissive; off = omit emissive slot.",
+                    },
+                ),
+                "emissive_strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "min": 0.0,
+                        "max": 10.0,
+                        "step": 0.1,
+                        "tooltip": "Emissive strength multiplier (writes KHR_materials_emissive_strength in glTF/GLB when > 1.0).",
+                    },
+                ),
                 "output_name": (
                     "STRING",
                     {
@@ -923,7 +997,9 @@ class HypbrExport:
         target: str,
         material_name: str,
         transparency: str,
-        output_name: str,
+        emissive: str = "auto",
+        emissive_strength: float = 1.0,
+        output_name: str = "export",
     ) -> dict[str, Any]:
         mat_dir = Path(material_dir.strip())
         if not (mat_dir / "albedo_delit.png").exists():
@@ -937,6 +1013,8 @@ class HypbrExport:
             str(mat_dir),
             "--target", target,
             "--transparency", transparency,
+            "--emissive", emissive,
+            "--emissive-strength", f"{float(emissive_strength):.3f}",
             "--out", str(out_dir),
         ]
         if material_name.strip():

@@ -23,7 +23,7 @@
       "title": "How to Use \u2014 hypbr Procedural Material",
       "properties": {},
       "widgets_values": [
-        "## hypbr \u2014 Procedural 16-Map Material + Live 3D & Video\n\nGenerate **100% MIT-licensed**, mathematically seamless **16-map PBR materials** (no photo needed), inspect live in **Texture Viewer Pro**, render a **3D preview video**, and export glTF/GLB.\n\n### Quick Steps\n1. **Synthesize Seamless Material**:\n   - `material`: Default is `chainlink_fence_galvanized` (over/under diamond wire weave, rust streaks, and transparent `opacity` holes).\n   - `transparency`: `auto` writes `opacity.png` only for cutout materials (>0.5% holes). Set `off` to force opaque.\n2. **Texture Viewer Pro (Live 3D)**: `alpha_map` is wired for `chainlink_fence_galvanized` cutout transparency. If you switch to an opaque material, disconnect `alpha_map` for crisp opaque sorting. Texture Viewer Pro's **Mesh** dropdown already includes Sphere, Cube, Torus, Plane, and Showcase (this workflow leaves the default on Sphere; switch to **Plane** for a flat cutout preview). Load `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb` via its GLB button if you want those shapes.\n3. **Render 3D Video**: Uses `lightorbit` by default so orbiting sunlight casts **real diamond mesh shadows** onto the background wall & floor. The node's **Mesh** dropdown (`auto` / sphere / cube / cylinder / plane) works with every shot \u2014 `auto` keeps the framed fence panel; `plane` is a finely subdivided displaced plane at ~40\u00b0 with a grazing light and the shadow-catcher behind the cutout.\n4. **Export**: Writes `glb` with `alphaMode: \"MASK\"` and `doubleSided: true` when cutout is active (strictly `OPAQUE` otherwise).\n"
+        "## hypbr \u2014 Procedural 17-Map Material + Live 3D & Video\n\nGenerate **100% MIT-licensed**, mathematically seamless **17-map PBR materials** (no photo needed), inspect live in **Texture Viewer Pro**, render a **3D preview video**, and export glTF/GLB.\n\n### Quick Steps\n1. **Synthesize Seamless Material**:\n   - `material`: Default is `chainlink_fence_galvanized` (cutout wire weave). Try opaque glowing presets like `cooling_lava_cracks`, `scifi_panel_emissive`, `circuit_board_glow`, `glowing_charcoal_embers`, `carved_runic_stone`, or `neon_brick_wall` (all opaque, zero transparency).\n   - `transparency`: `auto` writes `opacity.png` only for cutout materials (>0.5% holes). Set `off` to force opaque.\n   - `emissive`: `auto` writes `emissive.png` only for glowing materials (>0.1% lit pixels); `on` always writes it (black if none); `off` disables glow. The `emissive` image pin outputs black when a material has no glow.\n2. **Texture Viewer Pro (Live 3D)**: `alpha_map` is wired for `chainlink_fence_galvanized` cutout transparency (disconnect `alpha_map` when switching to an opaque or glowing preset). Note: **Texture Viewer Pro** does **not** have an `emissive_map` input port, so glowing maps won't light up inside Texture Viewer Pro \u2014 inspect the `emissive` image output or use **Render 3D Video** / **Export GLB** to see the glow in 3D. Texture Viewer Pro's **Mesh** dropdown includes Sphere, Cube, Torus, Plane, and Showcase (load `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb` via **Load GLB** if desired).\n3. **Render 3D Video**: Uses `lightorbit` by default \u2014 orbiting sunlight casts **real diamond mesh shadows** on cutouts, and automatically **dims the studio lights mid-orbit** when `emissive` is active so the glow pops. The **Mesh** dropdown (`auto` / sphere / cube / cylinder / plane) works with every shot.\n4. **Export**: Writes `glb` with `alphaMode: \"MASK\"` for cutouts, and `emissiveTexture` + `emissiveFactor` (plus `KHR_materials_emissive_strength` when `emissive_strength > 1.0`) for glowing materials.\n"
       ]
     },
     {
@@ -140,6 +140,11 @@
           ]
         },
         {
+          "name": "emissive",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
           "name": "preview",
           "type": "IMAGE",
           "links": [
@@ -155,7 +160,7 @@
           ]
         }
       ],
-      "title": "1. Synthesize Seamless 16-Map Material",
+      "title": "1. Synthesize Seamless 17-Map Material",
       "properties": {
         "Node name for S&R": "HypbrProceduralMaterial"
       },
@@ -165,6 +170,7 @@
         42,
         "fixed",
         0.45,
+        "auto",
         "auto",
         "proc"
       ]
@@ -422,6 +428,8 @@
         "960x540",
         true,
         "auto",
+        "auto",
+        1.0,
         "chainlink"
       ]
     },
@@ -543,6 +551,8 @@
         "glb",
         "",
         "auto",
+        "auto",
+        1.0,
         "chainlink"
       ]
     }
@@ -551,7 +561,7 @@
     [
       1,
       2,
-      16,
+      17,
       4,
       0,
       "IMAGE"
@@ -583,7 +593,7 @@
     [
       5,
       2,
-      17,
+      18,
       8,
       0,
       "STRING"
@@ -607,7 +617,7 @@
     [
       8,
       2,
-      17,
+      18,
       11,
       0,
       "STRING"

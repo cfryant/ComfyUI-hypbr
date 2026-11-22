@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-hypbr"
-description = "ComfyUI nodes for hypbr: procedural 16-map seamless PBR materials (including cutout opacity), DepthPro2 photo-to-PBR, PBR blending, engine export, and headless Three.js turntable/light-orbit preview video rendering."
-version = "0.1.1"
+description = "ComfyUI nodes for hypbr: procedural 17-map seamless PBR materials (including cutout opacity and sRGB emissive glow), DepthPro2 photo-to-PBR, PBR blending, engine export, and headless Three.js turntable/light-orbit preview video rendering."
+version = "0.2.0"
 license = { file = "LICENSE" }
 readme = "README.md"
 dependencies = ["numpy", "pillow"]

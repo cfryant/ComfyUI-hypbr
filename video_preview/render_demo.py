@@ -112,6 +112,8 @@ def render_video_or_still(
     show_label: bool = True,
     transparency: str = "auto",
     mesh: str = "auto",
+    emissive: str = "auto",
+    emissive_strength: float = 1.0,
 ) -> None:
     if not (mat_dir / "albedo_delit.png").exists():
         raise FileNotFoundError(f"Expected albedo_delit.png in {mat_dir}")
@@ -131,7 +133,7 @@ def render_video_or_still(
         launch_args += ["--use-gl=angle"]
 
     label_flag = "1" if show_label else "0"
-    url = f"http://127.0.0.1:{port}/scene.html?name={quote(mat_dir.name)}&label={label_flag}&transparency={quote(transparency)}&mesh={quote(mesh)}"
+    url = f"http://127.0.0.1:{port}/scene.html?name={quote(mat_dir.name)}&label={label_flag}&transparency={quote(transparency)}&mesh={quote(mesh)}&emissive={quote(emissive)}&emissive_strength={emissive_strength}"
 
     try:
         with sync_playwright() as pw:
@@ -200,6 +202,8 @@ def main() -> int:
     ap.add_argument("--still-u", type=float, default=0.15, help="Normalized time [0..1] for --still (default: 0.15)")
     ap.add_argument("--no-label", action="store_true", help="Hide bottom-left material name label")
     ap.add_argument("--transparency", choices=("auto", "on", "off"), default="auto", help="Cutout opacity mode (default: auto)")
+    ap.add_argument("--emissive", choices=("auto", "on", "off"), default="auto", help="Emissive glow map mode (default: auto)")
+    ap.add_argument("--emissive-strength", type=float, default=1.0, help="Emissive intensity multiplier (default: 1.0)")
     ap.add_argument(
         "--mesh",
         choices=MESHES,
@@ -223,6 +227,8 @@ def main() -> int:
         show_label=not args.no_label,
         transparency=args.transparency,
         mesh=args.mesh,
+        emissive=args.emissive,
+        emissive_strength=args.emissive_strength,
     )
     target = args.still if args.still is not None else args.out
     print(f"Rendered {args.material_dir.name} ({args.shot}, mesh={args.mesh}, {w}x{h}) -> {target}")

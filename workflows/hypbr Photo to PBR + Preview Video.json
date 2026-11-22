@@ -23,7 +23,7 @@
       "title": "How to Use \u2014 hypbr Photo to PBR",
       "properties": {},
       "widgets_values": [
-        "## hypbr \u2014 Photo to 16-Map PBR + Interactive 3D & Video\n\nTurn a single surface photograph into **16 seamlessly tileable PBR maps**, inspect it live in **Texture Viewer Pro**, render a **3D preview video**, and export an engine-ready **GLB/glTF**.\n\n### Quick Steps\n1. **Load Surface Photo**: Pick any close-up surface photo (`hypbr_granite_sample.jpg` is preloaded).\n2. **Convert Photo to 16 PBR Maps**:\n   - `preset`: Choose the 47-node material tuning (`carved-stone`, `weathered-timber`, `glazed-tile`, `ornamental-iron`, `hardops-plate`, `v13-default`).\n   - `tileable`: Keep **true** for seamless tiling.\n   - `transparency`: `auto` keeps opaque materials strictly opaque (`alpha_map` left disconnected).\n3. **Texture Viewer Pro (Live 3D)**: Its **Mesh** dropdown already includes Sphere, Cube, Torus, Plane, and Showcase (this workflow leaves the default on Sphere; switch to **Plane** for a flat displaced preview). Or click **Load GLB** and pick `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb`.\n4. **3D Preview Video & Export**: Renders a deterministic Three.js turntable MP4 and exports `glb` into `ComfyUI/output/hypbr_exports/`. On **hypbr Render Preview Video**, the **Mesh** dropdown (`auto` / sphere / cube / cylinder / plane) applies to every shot \u2014 `auto` keeps the studio sphere+swatch layout; `plane` is a finely subdivided displaced plane at ~40\u00b0 with a grazing light.\n\n### Licensing Note\n`hypbr` graph & code are **MIT**, while **Apple Depth Pro 2** weights (`depthpro2-s`) downloaded on first run are licensed for **non-commercial research only (Apple AMLR)**.\n"
+        "## hypbr \u2014 Photo to 17-Map PBR + Interactive 3D & Video\n\nTurn a single surface photograph into **17 seamlessly tileable PBR maps**, inspect it live in **Texture Viewer Pro**, render a **3D preview video**, and export an engine-ready **GLB/glTF**.\n\n### Quick Steps\n1. **Load Surface Photo**: Pick any close-up surface photo (`hypbr_granite_sample.jpg` is preloaded).\n2. **Convert Photo to 17 PBR Maps**:\n   - `preset`: Choose the 47-node material tuning (`carved-stone`, `weathered-timber`, `glazed-tile`, `ornamental-iron`, `hardops-plate`, `v13-default`).\n   - `tileable`: Keep **true** for seamless tiling.\n   - `transparency`: `auto` keeps opaque materials strictly opaque (`alpha_map` left disconnected).\n   - `emissive`: `auto` emits `emissive.png` only when active (`on` writes a black `emissive.png` for standard photos; `off` disables emissive). The `emissive` output pin returns black when none is present.\n3. **Texture Viewer Pro (Live 3D)**: Its **Mesh** dropdown includes Sphere, Cube, Torus, Plane, and Showcase (click **Load GLB** for `ComfyUI-hypbr/assets/cylinder.glb` or `rounded_cube.glb`). Note: **Texture Viewer Pro** does **not** have an `emissive_map` input port \u2014 use the `emissive` image pin, **Render 3D Video**, or **Export GLB** when working with glowing materials.\n4. **3D Preview Video & Export**: Renders a deterministic Three.js video (`turntable` default; `lightorbit` dims studio lights mid-orbit for emissive materials) and exports `glb` (with `emissiveTexture` + optional `KHR_materials_emissive_strength` when `emissive_strength > 1.0`). The **Mesh** dropdown (`auto` / sphere / cube / cylinder / plane) applies to every shot.\n\n### Licensing Note\n`hypbr` graph & code are **MIT**, while **Apple Depth Pro 2** weights (`depthpro2-s`) downloaded on first run are licensed for **non-commercial research only (Apple AMLR)**.\n"
       ]
     },
     {
@@ -184,6 +184,11 @@
           "links": null
         },
         {
+          "name": "emissive",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
           "name": "preview",
           "type": "IMAGE",
           "links": [
@@ -199,7 +204,7 @@
           ]
         }
       ],
-      "title": "2. Convert Photo to 16 PBR Maps",
+      "title": "2. Convert Photo to 17 PBR Maps",
       "properties": {
         "Node name for S&R": "HypbrPhotoToPBR"
       },
@@ -209,6 +214,7 @@
         512,
         "photo_pbr",
         "OpenGL (+Y)",
+        "auto",
         "auto"
       ]
     },
@@ -443,6 +449,8 @@
         "960x540",
         true,
         "auto",
+        "auto",
+        1.0,
         "photo_pbr"
       ]
     },
@@ -564,6 +572,8 @@
         "glb",
         "",
         "auto",
+        "auto",
+        1.0,
         "photo_pbr"
       ]
     },
@@ -602,7 +612,7 @@
     [
       2,
       3,
-      16,
+      17,
       4,
       0,
       "IMAGE"
@@ -634,7 +644,7 @@
     [
       6,
       3,
-      17,
+      18,
       8,
       0,
       "STRING"
@@ -658,7 +668,7 @@
     [
       9,
       3,
-      17,
+      18,
       11,
       0,
       "STRING"

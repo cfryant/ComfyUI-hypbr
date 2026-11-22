@@ -121,6 +121,8 @@ function loadTex(file, srgb = false) {
 
 // Check if opacity.png exists and has meaningful cutout holes (>0.5% pixels < 0.5 alpha)
 const transparencyMode = (params.get("transparency") || "auto").toLowerCase();
+const emissiveMode = (params.get("emissive") || "auto").toLowerCase();
+const emissiveStrength = Math.max(0.0, parseFloat(params.get("emissive_strength") || "1.0") || 1.0);
 async function detectCutout(opTex) {
   if (transparencyMode === "off") return false;
   if (!opTex || !opTex.image) return false;
@@ -140,8 +142,27 @@ async function detectCutout(opTex) {
   return totalPx > 0 && (holeCount / totalPx) > 0.005;
 }
 
+async function detectEmissive(emTex) {
+  if (emissiveMode === "off") return false;
+  if (!emTex || !emTex.image) return false;
+  if (emissiveMode === "on") return true;
+  const img = emTex.image;
+  const c = document.createElement("canvas");
+  c.width = Math.min(img.width, 128);
+  c.height = Math.min(img.height, 128);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  const d = ctx.getImageData(0, 0, c.width, c.height).data;
+  let glowCount = 0;
+  const totalPx = d.length / 4;
+  for (let i = 0; i < d.length; i += 4) {
+    if (Math.max(d[i], d[i + 1], d[i + 2]) > 50) glowCount++;
+  }
+  return totalPx > 0 && (glowCount / totalPx) > 0.001;
+}
+
 // Load all PBR maps
-const [albTex, nrmTex, rghTex, metTex, aoTex, hgtTex, opTex, nrmDispTex, rghDispTex, opDispTex] = await Promise.all([
+const [albTex, nrmTex, rghTex, metTex, aoTex, hgtTex, opTex, emTex, nrmDispTex, rghDispTex, opDispTex] = await Promise.all([
   loadTex("albedo_delit.png", true),
   loadTex("normal.png", false),
   loadTex("roughness.png", false),
@@ -149,12 +170,14 @@ const [albTex, nrmTex, rghTex, metTex, aoTex, hgtTex, opTex, nrmDispTex, rghDisp
   loadTex("ao.png", false),
   loadTex("height.png", false),
   loadTex("opacity.png", false),
+  loadTex("emissive.png", true),
   loadTex("normal.png", true),
   loadTex("roughness.png", true),
   loadTex("opacity.png", true),
 ]);
 
 const hasCutout = await detectCutout(opTex);
+const hasEmissive = await detectEmissive(emTex);
 
 // Build primary PBR material + channel inspection materials for channel_split shot
 const dispScaleBase = hasCutout ? 0.024 : 0.036;
@@ -186,6 +209,11 @@ if (hasCutout && opTex) {
   pbrMat.side = THREE.DoubleSide;
   depthMat.alphaMap = opTex;
   depthMat.alphaTest = 0.5;
+}
+if (hasEmissive && emTex) {
+  pbrMat.emissive = new THREE.Color(0xffffff);
+  pbrMat.emissiveMap = emTex;
+  pbrMat.emissiveIntensity = 1.65 * emissiveStrength;
 }
 
 // Channel-visualization materials (all share real vertex displacement so splits align pixel-for-pixel!)
@@ -226,6 +254,7 @@ const matAlbedo = makeDisplacedChannelMat(albTex, true);
 const matNormal = makeDisplacedChannelMat(nrmDispTex, true);
 const matRough = makeDisplacedChannelMat(rghDispTex, true);
 const matOpacity = makeDisplacedChannelMat(opDispTex || rghDispTex, false);
+const matEmissive = makeDisplacedChannelMat(emTex || albTex, true);
 
 // Mesh selector: auto = current studio layout; otherwise a single hero shape for every shot
 const MESH_MODES = new Set(["auto", "sphere", "cube", "cylinder", "plane"]);
@@ -236,7 +265,7 @@ const useExplicitMesh = meshMode !== "auto";
 if (meshMode === "plane") {
   pbrMat.side = THREE.DoubleSide;
   depthMat.side = THREE.DoubleSide;
-  for (const m of [matAlbedo, matNormal, matRough, matOpacity]) {
+  for (const m of [matAlbedo, matNormal, matRough, matOpacity, matEmissive]) {
     m.side = THREE.DoubleSide;
   }
   // Slightly wider / longer shadow frustum so a grazing light still covers the plane
@@ -375,7 +404,7 @@ function setDisplacedMat(mat) {
 }
 
 function setDispScale(sc) {
-  for (const m of [pbrMat, depthMat, matAlbedo, matNormal, matRough, matOpacity]) {
+  for (const m of [pbrMat, depthMat, matAlbedo, matNormal, matRough, matOpacity, matEmissive]) {
     m.displacementScale = sc;
     m.displacementBias = -sc * 0.5;
   }
@@ -496,6 +525,28 @@ function renderChannelSplit(u, w, h) {
       leftMat = pbrMat; leftLbl = "Final Lit PBR";
       rightMat = pbrMat; rightLbl = "Final Lit PBR";
     }
+  } else if (hasEmissive) {
+    if (u < 0.22) {
+      splitFrac = u / 0.22;
+      leftMat = matNormal; leftLbl = "Normal (OpenGL +Y)";
+      rightMat = matAlbedo; rightLbl = "Albedo (De-lit)";
+    } else if (u < 0.44) {
+      splitFrac = (u - 0.22) / 0.22;
+      leftMat = matRough; leftLbl = "Roughness";
+      rightMat = matNormal; rightLbl = "Normal (OpenGL +Y)";
+    } else if (u < 0.66) {
+      splitFrac = (u - 0.44) / 0.22;
+      leftMat = matEmissive; leftLbl = "Emissive (Glow)";
+      rightMat = matRough; rightLbl = "Roughness";
+    } else if (u < 0.88) {
+      splitFrac = (u - 0.66) / 0.22;
+      leftMat = pbrMat; leftLbl = "Final Lit PBR";
+      rightMat = matEmissive; rightLbl = "Emissive (Glow)";
+    } else {
+      splitFrac = 1.0;
+      leftMat = pbrMat; leftLbl = "Final Lit PBR";
+      rightMat = pbrMat; rightLbl = "Final Lit PBR";
+    }
   } else {
     if (u < 0.28) {
       splitFrac = u / 0.28;
@@ -561,6 +612,22 @@ window.__renderFrame = function(frameIdx, totalFrames, shotType) {
   heroGroup.visible = true;
   if (tilingPlane) tilingPlane.visible = false;
   if (wallMesh) wallMesh.visible = hasCutout;
+
+  const baseHemi = (meshMode === "plane") ? 0.48 : 0.35;
+  if (shotType === "lightorbit" && hasEmissive) {
+    // Smooth studio-light dim during the mid-orbit so emissive glow reads dramatically
+    const dip = Math.pow(Math.sin(Math.PI * u), 1.6);
+    const dim = 1.0 - 0.86 * dip;
+    keyLight.intensity = 2.25 * dim;
+    rimLight.intensity = 0.95 * (0.25 + 0.75 * dim);
+    hemi.intensity = baseHemi * (0.18 + 0.82 * dim);
+    scene.environmentIntensity = 0.95 * (0.14 + 0.86 * dim);
+  } else {
+    keyLight.intensity = 2.25;
+    rimLight.intensity = 0.95;
+    hemi.intensity = baseHemi;
+    scene.environmentIntensity = 0.95;
+  }
 
   if (useExplicitMesh) {
     applyExplicitMeshCamera(shotType, u);
